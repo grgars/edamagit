@@ -239,11 +239,21 @@ async function createNewSpinoff({ repository }: MenuState) {
   // Checkout new branch
   await gitRun(repository.gitRepository, ['checkout', '-b', newBranchName]);
 
-  if (upstreamBranchCommit && baseCommit !== upstreamBranchCommit) {
-    await gitRun(repository.gitRepository, ['branch', '-f', base, upstreamBranchCommit]);
+  if (baseCommit && upstreamBranchCommit && baseCommit !== upstreamBranchCommit) {
+    // Find common ancestor of base branch and upstream branch
+    const mergeBase = await repository.gitRepository.getMergeBase(baseCommit, upstreamBranchCommit);
+
+    // Reset the original branch to the common ancestor
+    await gitRun(repository.gitRepository, [
+      'update-ref',
+      '-m',
+      `"reset: moving to ${mergeBase}"`,
+      `refs/heads/${base}`,
+      mergeBase
+    ]);
 
     window.setStatusBarMessage(
-      `Branch ${base} was reset to upstream`,
+      `Branch ${base} was reset to ${mergeBase}`,
       Constants.StatusMessageDisplayTimeout
     );
   } else {
