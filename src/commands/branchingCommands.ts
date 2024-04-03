@@ -207,12 +207,58 @@ async function createNewSpinoff({ repository }: MenuState) {
     prompt: 'Name for new branch',
   });
 
-  if (newBranchName && newBranchName.length > 0) {
-    const args = ['checkout', '-B', newBranchName];
-    return gitRun(repository.gitRepository, args);
+  if (!newBranchName || newBranchName.length < 1) {
+    return window.setStatusBarMessage(
+      'No name given for new branch',
+      Constants.StatusMessageDisplayTimeout
+    );
+  }
+
+  if (repository.branches.find(b => b.name === newBranchName)) {
+    return window.setStatusBarMessage(
+      `Cannot spin off ${newBranchName}. It already exists`,
+      Constants.StatusMessageDisplayTimeout
+    );
+  }
+
+  const base = repository.HEAD?.name;
+
+  if (!base) {
+    return window.setStatusBarMessage(
+      'No branch checked out',
+      Constants.StatusMessageDisplayTimeout
+    );
+  }
+
+  // Save current commit hash of base branch for later reference
+  const baseCommit = repository.HEAD?.commit;
+
+  // Get upsteam branch commit hash of base branch
+  const upstreamBranchCommit = repository.HEAD.upstreamRemote?.commit?.hash;
+
+  // Checkout new branch
+  await gitRun(repository.gitRepository, ['checkout', '-b', newBranchName]);
+
+  if (baseCommit && upstreamBranchCommit && baseCommit !== upstreamBranchCommit) {
+    // Find common ancestor of base branch and upstream branch
+    const mergeBase = await repository.gitRepository.getMergeBase(baseCommit, upstreamBranchCommit);
+
+    // Reset the original branch to the common ancestor
+    await gitRun(repository.gitRepository, [
+      'update-ref',
+      '-m',
+      `"reset: moving to ${mergeBase}"`,
+      `refs/heads/${base}`,
+      mergeBase
+    ]);
+
+    window.setStatusBarMessage(
+      `Branch ${base} was reset to ${mergeBase}`,
+      Constants.StatusMessageDisplayTimeout
+    );
   } else {
     window.setStatusBarMessage(
-      'No name given for new branch',
+      `Branch ${base} not changed`,
       Constants.StatusMessageDisplayTimeout
     );
   }
